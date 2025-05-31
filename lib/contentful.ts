@@ -39,18 +39,21 @@ try {
   client = null
 }
 
-// Content type ID - Using the correct content type from your Contentful space
+// Update the content type ID to match your Contentful space
+// Change this line:
+// To:
 const CONTENT_TYPE_ID = "mattsBlog"
 
-// Type definitions for Contentful blog post
+// Update the ContentfulBlogPostFields interface to match your Contentful model
+// The field names need to match exactly (case-sensitive)
 export interface ContentfulBlogPostFields {
-  title: string // Required
-  slug: string // Required
-  content: Document // Required
-  excerpt?: string // Optional
-  date?: string // Optional
-  tags?: string // Optional
-  featured?: boolean // Optional
+  title: string // Required - matches "Title" in Contentful
+  slug: string // Required - matches "Slug" in Contentful
+  content: Document // Required - matches "Content" in Contentful
+  excerpt?: string // Optional - matches "Excerpt" in Contentful
+  date?: string // Optional - matches "Date" in Contentful (but we need to handle Date & time format)
+  tags?: string // Optional - matches "Tags" in Contentful
+  featured?: boolean // Optional - matches "Featured" in Contentful
 }
 
 export type ContentfulBlogPost = Entry<ContentfulBlogPostFields>
@@ -61,14 +64,57 @@ function isValidBlogPost(post: ContentfulBlogPost): boolean {
   const hasSlug = post.fields.slug && post.fields.slug.trim().length > 0
   const hasContent = post.fields.content && post.fields.content.nodeType === "document"
 
-  console.log(`📝 Validating post "${post.fields.title}":`, {
+  console.log(`📝 Validating post "${post.fields.title || "Unknown"}":`, {
     hasTitle,
     hasSlug,
     hasContent,
     valid: hasTitle && hasSlug && hasContent,
+    publishedAt: post.sys.publishedAt ? "Published" : "Draft",
   })
 
   return hasTitle && hasSlug && hasContent
+}
+
+// Debug function to get ALL entries regardless of content type
+export async function debugGetAllEntries() {
+  if (!client) {
+    return { error: "Client not initialized" }
+  }
+
+  try {
+    console.log("🔍 Fetching ALL entries from Contentful...")
+
+    const allEntries = await client.getEntries({
+      limit: 100,
+    })
+
+    console.log("📊 All entries response:", {
+      total: allEntries.total,
+      items: allEntries.items.length,
+      contentTypes: [...new Set(allEntries.items.map((item) => item.sys.contentType?.sys.id).filter(Boolean))],
+    })
+
+    // Log first few entries for debugging
+    allEntries.items.slice(0, 5).forEach((entry, index) => {
+      console.log(`📝 Entry ${index + 1}:`, {
+        id: entry.sys.id,
+        contentType: entry.sys.contentType?.sys.id || "unknown",
+        fields: Object.keys(entry.fields),
+        published: entry.sys.publishedAt ? "Yes" : "No",
+        title: entry.fields.title || "No title",
+      })
+    })
+
+    return {
+      success: true,
+      total: allEntries.total,
+      items: allEntries.items,
+      contentTypes: [...new Set(allEntries.items.map((item) => item.sys.contentType?.sys.id).filter(Boolean))],
+    }
+  } catch (error) {
+    console.error("❌ Error fetching all entries:", error)
+    return { error: error instanceof Error ? error.message : "Unknown error" }
+  }
 }
 
 // Fetch all published blog posts from Contentful
@@ -96,6 +142,19 @@ export async function getBlogPostsFromContentful(): Promise<ContentfulBlogPost[]
       limit: response.limit,
     })
 
+    // Log all entries for debugging
+    response.items.forEach((item, index) => {
+      console.log(`📝 Raw entry ${index + 1}:`, {
+        id: item.sys.id,
+        title: item.fields.title,
+        slug: item.fields.slug,
+        hasContent: !!item.fields.content,
+        contentType: item.sys.contentType.sys.id,
+        published: item.sys.publishedAt ? "Yes" : "No",
+        createdAt: item.sys.createdAt,
+      })
+    })
+
     // Filter posts to only include those with required fields
     const validPosts = response.items.filter(isValidBlogPost)
 
@@ -110,6 +169,16 @@ export async function getBlogPostsFromContentful(): Promise<ContentfulBlogPost[]
         hasDate: !!validPosts[0].fields.date,
         published: validPosts[0].sys.publishedAt ? "Yes" : "No",
         contentType: validPosts[0].sys.contentType.sys.id,
+      })
+    } else if (response.items.length > 0) {
+      console.log("❌ No valid posts found. Issues with existing posts:")
+      response.items.forEach((item, index) => {
+        console.log(`Post ${index + 1} issues:`, {
+          title: item.fields.title ? "✅ Has title" : "❌ Missing title",
+          slug: item.fields.slug ? "✅ Has slug" : "❌ Missing slug",
+          content: item.fields.content ? "✅ Has content" : "❌ Missing content",
+          published: item.sys.publishedAt ? "✅ Published" : "❌ Draft",
+        })
       })
     }
 
@@ -169,13 +238,31 @@ export async function getBlogPostBySlug(slug: string): Promise<ContentfulBlogPos
   }
 }
 
-// Convert Contentful blog post to our app's format with proper fallbacks
+// Update the convertContentfulPost function to handle the date format correctly
 export function convertContentfulPost(post: ContentfulBlogPost) {
   // Generate fallback excerpt from content if not provided
   const fallbackExcerpt = post.fields.excerpt || "Read more about this post..."
 
-  // Use date field if available, otherwise use creation date
-  const postDate = post.fields.date || post.sys.createdAt.split("T")[0]
+  // Handle Date & time format - extract just the date part if it's a full datetime
+  let postDate = post.sys.createdAt.split("T")[0] // Default to creation date
+  if (post.fields.date) {
+    // If it's a string, extract date part, otherwise use as is
+    postDate =
+      typeof post.fields.date === "string" && post.fields.date.includes("T")
+        ? post.fields.date.split("T")[0]
+        : post.fields.date
+  }
+
+  console.log(`🔄 Converting post "${post.fields.title}":`, {
+    slug: post.fields.slug,
+    title: post.fields.title,
+    hasExcerpt: !!post.fields.excerpt,
+    hasDate: !!post.fields.date,
+    dateValue: post.fields.date,
+    convertedDate: postDate,
+    usingFallbackExcerpt: !post.fields.excerpt,
+    usingCreationDate: !post.fields.date,
+  })
 
   return {
     slug: post.fields.slug,
@@ -236,12 +323,14 @@ export async function testContentfulConnection() {
       validBlogPosts: validPosts.length,
       message: "Connection successful",
       contentTypeExists: blogResponse.total >= 0,
+      contentTypeId: CONTENT_TYPE_ID,
     }
   } catch (error) {
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unknown error",
       details: error,
+      contentTypeId: CONTENT_TYPE_ID,
     }
   }
 }
