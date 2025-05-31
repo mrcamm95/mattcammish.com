@@ -56,7 +56,7 @@ export async function getBlogPostsFromContentful(): Promise<ContentfulBlogPost[]
     console.log("🔍 Fetching blog posts from Contentful...")
 
     const response = await client.getEntries<ContentfulBlogPostFields>({
-      content_type: "blogPost",
+      content_type: "mattsBlog",
       order: "-fields.publishedDate",
       limit: 100,
     })
@@ -88,7 +88,7 @@ export async function getBlogPostBySlug(slug: string): Promise<ContentfulBlogPos
     console.log(`🔍 Fetching blog post with slug: ${slug}`)
 
     const response = await client.getEntries<ContentfulBlogPostFields>({
-      content_type: "blogPost",
+      content_type: "mattsBlog",
       "fields.slug": slug,
       limit: 1,
     })
