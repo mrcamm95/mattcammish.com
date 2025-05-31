@@ -1,14 +1,18 @@
+import { getBlogPostsFromContentful, getBlogPostBySlug, convertContentfulPost } from "./contentful"
+
 export interface BlogPost {
   slug: string
   title: string
   excerpt: string
-  content: string
+  content: any // Can be string or Contentful rich text document
   date: string
   published: boolean
+  featured?: boolean
+  tags?: string[]
 }
 
-// Mock blog data - in a real app, this would come from a CMS or markdown files
-const blogPosts: BlogPost[] = [
+// Fallback blog posts for when Contentful is unavailable
+const fallbackPosts: BlogPost[] = [
   {
     slug: "getting-started-with-nextjs",
     title: "Getting Started with Next.js: A Modern React Framework",
@@ -56,39 +60,67 @@ const blogPosts: BlogPost[] = [
     date: "2024-01-10",
     published: true,
   },
-  {
-    slug: "building-sustainable-software",
-    title: "Building Sustainable Software: A Developer's Responsibility",
-    excerpt:
-      "Learn about the environmental impact of software development and discover practical strategies for writing more efficient, sustainable code.",
-    content: `
-      <p>As developers, we have a responsibility to consider the environmental impact of the software we create. Every line of code we write has the potential to consume energy and resources.</p>
-      
-      <h2>The Hidden Cost of Code</h2>
-      <p>Software consumes energy through CPU cycles, memory usage, and network requests. Inefficient code can lead to higher energy consumption and increased carbon emissions.</p>
-      
-      <h2>Strategies for Sustainable Development</h2>
-      <p>Here are some practical approaches:</p>
-      <ul>
-        <li>Optimize algorithms and data structures</li>
-        <li>Minimize network requests and payload sizes</li>
-        <li>Use efficient caching strategies</li>
-        <li>Choose green hosting providers</li>
-      </ul>
-      
-      <p>By making conscious choices about how we write and deploy code, we can contribute to a more sustainable digital future.</p>
-    `,
-    date: "2024-01-05",
-    published: true,
-  },
 ]
 
 export async function getBlogPosts(): Promise<BlogPost[]> {
-  return blogPosts
-    .filter((post) => post.published)
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+  try {
+    console.log("📚 Starting to fetch blog posts...")
+
+    // Try to fetch from Contentful first
+    const contentfulPosts = await getBlogPostsFromContentful()
+
+    if (contentfulPosts.length > 0) {
+      console.log(`📚 Successfully fetched ${contentfulPosts.length} posts from Contentful`)
+
+      // Convert Contentful posts to our format
+      const convertedPosts = contentfulPosts.map(convertContentfulPost)
+
+      // Sort by date (newest first)
+      return convertedPosts.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    } else {
+      console.log("📚 No posts found in Contentful, using fallback posts")
+      return fallbackPosts
+        .filter((post) => post.published)
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    }
+  } catch (error) {
+    console.error("📚 Error in getBlogPosts, using fallback posts:", error)
+
+    // Return fallback posts if Contentful fails
+    return fallbackPosts
+      .filter((post) => post.published)
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+  }
 }
 
 export async function getBlogPost(slug: string): Promise<BlogPost | null> {
-  return blogPosts.find((post) => post.slug === slug && post.published) || null
+  try {
+    console.log(`📖 Fetching blog post with slug: ${slug}`)
+
+    // Try to fetch from Contentful first
+    const contentfulPost = await getBlogPostBySlug(slug)
+
+    if (contentfulPost) {
+      console.log(`📖 Found post in Contentful: ${contentfulPost.fields.title}`)
+      return convertContentfulPost(contentfulPost)
+    } else {
+      console.log(`📖 Post not found in Contentful, checking fallback posts`)
+
+      // Fallback to local posts
+      const fallbackPost = fallbackPosts.find((post) => post.slug === slug && post.published)
+
+      if (fallbackPost) {
+        console.log(`📖 Found post in fallback: ${fallbackPost.title}`)
+      } else {
+        console.log(`📖 Post not found anywhere: ${slug}`)
+      }
+
+      return fallbackPost || null
+    }
+  } catch (error) {
+    console.error(`📖 Error fetching blog post ${slug}, checking fallback:`, error)
+
+    // Fallback to local posts
+    return fallbackPosts.find((post) => post.slug === slug && post.published) || null
+  }
 }
