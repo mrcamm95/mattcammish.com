@@ -9,6 +9,9 @@ interface BlogPostPageProps {
   params: Promise<{ slug: string }>
 }
 
+// Force cache revalidation to prevent stale data
+export const revalidate = 0
+
 export async function generateStaticParams() {
   const posts = await getBlogPosts()
   return posts.map((post) => ({
@@ -40,6 +43,13 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
     notFound()
   }
 
+  // Log the post source for debugging
+  console.log(`🔍 Blog post page rendering: ${post.title}`, {
+    source: post.contentfulId ? "Contentful" : "Fallback",
+    contentfulId: post.contentfulId || "N/A",
+    slug: post.slug,
+  })
+
   return (
     <div className="max-w-2xl mx-auto">
       <Link
@@ -55,6 +65,11 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
           <time className="text-sm text-muted-foreground mb-2 block">{formatDate(post.date)}</time>
           <h1 className="text-3xl font-bold tracking-tight mb-4">{post.title}</h1>
           <p className="text-lg text-muted-foreground leading-relaxed">{post.excerpt}</p>
+
+          {/* Source indicator (for debugging) */}
+          <div className="mt-4 text-xs text-muted-foreground">
+            Source: {post.contentfulId ? "Contentful" : "Fallback"}
+          </div>
         </header>
 
         <div className="prose prose-neutral dark:prose-invert max-w-none">

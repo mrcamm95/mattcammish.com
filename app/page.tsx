@@ -3,11 +3,25 @@ import { getBlogPosts } from "@/lib/blog"
 import { formatDate } from "@/lib/utils"
 import { ContentStatus } from "@/components/content-status"
 
+// Force cache revalidation to prevent stale data
+export const revalidate = 0
+
 export default async function HomePage() {
+  // Check if we're in a preview environment
+  const isPreview = process.env.VERCEL_ENV === "preview" || process.env.NODE_ENV === "development"
+
   const posts = await getBlogPosts()
 
   // Check if posts are from Contentful (they'll have rich text content)
-  const isContentful = posts.length > 0 && typeof posts[0].content === "object"
+  const isContentful = posts.length > 0 && typeof posts[0].content === "object" && posts[0].contentfulId
+
+  console.log("🏠 HomePage rendering with:", {
+    postsCount: posts.length,
+    isContentful,
+    isPreview,
+    firstPostTitle: posts.length > 0 ? posts[0].title : "No posts",
+    firstPostSource: posts.length > 0 ? (posts[0].contentfulId ? "Contentful" : "Fallback") : "None",
+  })
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -57,6 +71,11 @@ export default async function HomePage() {
                         </span>
                       </div>
                     )}
+
+                    {/* Source indicator (for debugging) */}
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      Source: {post.contentfulId ? "Contentful" : "Fallback"}
+                    </div>
                   </div>
                 </Link>
               </article>
@@ -76,7 +95,7 @@ export default async function HomePage() {
       </section>
 
       {/* Content status indicator */}
-      <ContentStatus isContentful={isContentful} postsCount={posts.length} />
+      <ContentStatus isContentful={isContentful} postsCount={posts.length} isPreview={isPreview} />
     </div>
   )
 }
