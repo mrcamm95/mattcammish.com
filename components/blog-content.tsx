@@ -8,15 +8,17 @@ interface BlogContentProps {
 export function BlogContent({ content }: BlogContentProps) {
   // Check if content is a Contentful rich text document
   if (content && typeof content === "object" && content.nodeType === "document") {
-    // Render rich text content
+    // Render rich text content with custom styling
     const options = {
       renderNode: {
-        [BLOCKS.HEADING_1]: (node: any, children: any) => <h1 className="text-3xl font-bold mt-8 mb-6">{children}</h1>,
+        [BLOCKS.HEADING_1]: (node: any, children: any) => (
+          <h1 className="text-3xl font-bold mt-8 mb-6 text-foreground">{children}</h1>
+        ),
         [BLOCKS.HEADING_2]: (node: any, children: any) => (
-          <h2 className="text-2xl font-semibold mt-8 mb-4">{children}</h2>
+          <h2 className="text-2xl font-semibold mt-8 mb-4 text-foreground">{children}</h2>
         ),
         [BLOCKS.HEADING_3]: (node: any, children: any) => (
-          <h3 className="text-xl font-semibold mt-6 mb-3">{children}</h3>
+          <h3 className="text-xl font-semibold mt-6 mb-3 text-foreground">{children}</h3>
         ),
         [BLOCKS.PARAGRAPH]: (node: any, children: any) => (
           <p className="text-muted-foreground leading-relaxed mb-4">{children}</p>
@@ -50,14 +52,14 @@ export function BlogContent({ content }: BlogContentProps) {
       },
     }
 
-    return <div>{documentToReactComponents(content, options)}</div>
+    return <div className="prose max-w-none">{documentToReactComponents(content, options)}</div>
   }
 
   // Fallback to regular HTML rendering for string content
   return (
     <div
       dangerouslySetInnerHTML={{ __html: content }}
-      className="prose-headings:font-semibold prose-headings:tracking-tight prose-p:leading-relaxed prose-p:text-muted-foreground"
+      className="prose prose-neutral dark:prose-invert max-w-none prose-headings:font-semibold prose-headings:tracking-tight prose-p:leading-relaxed prose-p:text-muted-foreground"
     />
   )
 }
