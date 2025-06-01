@@ -4,8 +4,25 @@ import type { Document } from "@contentful/rich-text-types"
 // Contentful client configuration with validation
 function createContentfulClient() {
   const spaceId = process.env.CONTENTFUL_SPACE_ID
-  // Use preview token if in preview environment
-  const isPreviewEnvironment = process.env.VERCEL_ENV === 'preview'
+  
+  // More robust preview detection - check multiple environment variables
+  const isPreviewEnvironment = 
+    process.env.VERCEL_ENV === 'preview' || 
+    process.env.NEXT_PUBLIC_VERCEL_ENV === 'preview' ||
+    process.env.PREVIEW_MODE === 'true' ||
+    process.env.NEXT_PUBLIC_PREVIEW_MODE === 'true' ||
+    process.env.CONTENTFUL_PREVIEW_MODE === 'true'
+  
+  // Log all environment variables for debugging
+  console.log('🔍 Environment variables:', {
+    VERCEL_ENV: process.env.VERCEL_ENV,
+    NEXT_PUBLIC_VERCEL_ENV: process.env.NEXT_PUBLIC_VERCEL_ENV,
+    PREVIEW_MODE: process.env.PREVIEW_MODE,
+    NEXT_PUBLIC_PREVIEW_MODE: process.env.NEXT_PUBLIC_PREVIEW_MODE,
+    CONTENTFUL_PREVIEW_MODE: process.env.CONTENTFUL_PREVIEW_MODE,
+    NODE_ENV: process.env.NODE_ENV
+  })
+  
   const accessToken = isPreviewEnvironment
     ? process.env.CONTENTFUL_PREVIEW_ACCESS_TOKEN
     : process.env.CONTENTFUL_ACCESS_TOKEN
