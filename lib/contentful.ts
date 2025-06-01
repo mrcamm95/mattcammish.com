@@ -4,13 +4,19 @@ import type { Document } from "@contentful/rich-text-types"
 // Contentful client configuration with validation
 function createContentfulClient() {
   const spaceId = process.env.CONTENTFUL_SPACE_ID
-  const accessToken = process.env.CONTENTFUL_ACCESS_TOKEN
+  // Use preview token if in preview environment
+  const isPreviewEnvironment = process.env.VERCEL_ENV === 'preview'
+  const accessToken = isPreviewEnvironment
+    ? process.env.CONTENTFUL_PREVIEW_ACCESS_TOKEN
+    : process.env.CONTENTFUL_ACCESS_TOKEN
   const environment = process.env.CONTENTFUL_ENVIRONMENT || "master"
 
-  console.log("🔧 Creating Contentful client with:", {
+  console.log(`🔧 Creating Contentful client with:`, {
     spaceId: spaceId ? `${spaceId.substring(0, 8)}...` : "MISSING",
     accessToken: accessToken ? `${accessToken.substring(0, 10)}...` : "MISSING",
     environment,
+    isPreviewEnvironment,
+    vercelEnv: process.env.VERCEL_ENV || 'not set',
   })
 
   if (!spaceId) {
@@ -18,13 +24,16 @@ function createContentfulClient() {
   }
 
   if (!accessToken) {
-    throw new Error("CONTENTFUL_ACCESS_TOKEN environment variable is required")
+    throw new Error(isPreviewEnvironment
+      ? "CONTENTFUL_PREVIEW_ACCESS_TOKEN environment variable is required"
+      : "CONTENTFUL_ACCESS_TOKEN environment variable is required")
   }
 
   return createClient({
     space: spaceId,
     accessToken: accessToken,
     environment: environment,
+    host: isPreviewEnvironment ? 'preview.contentful.com' : 'cdn.contentful.com',
   })
 }
 
