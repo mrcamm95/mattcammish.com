@@ -1,4 +1,5 @@
 import Link from "next/link"
+import Image from "next/image"
 import { getBlogPosts } from "@/lib/blog"
 import { formatDate } from "@/lib/utils"
 import { ContentStatus } from "@/components/content-status"
@@ -12,10 +13,40 @@ export default async function HomePage() {
   return (
     <div className="max-w-2xl mx-auto">
       <header className="mb-16">
-        <h1 className="text-4xl font-bold tracking-tight mb-4">Your Name</h1>
-        <p className="text-lg text-muted-foreground leading-relaxed">
-          Welcome to my personal blog where I share thoughts on technology, design, and life.
-        </p>
+        {/* Title and Profile Image Section */}
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex-1">
+            <h1 className="text-4xl font-bold tracking-tight text-foreground">Hi, I'm Matt 👋</h1>
+          </div>
+          <div className="flex-shrink-0 ml-8">
+            <Image
+              src="/images/profile.png"
+              alt="Matt's profile picture"
+              width={120}
+              height={120}
+              className="rounded-full border-2 border-border"
+              priority
+            />
+          </div>
+        </div>
+
+        {/* Introduction Text */}
+        <div className="text-lg text-muted-foreground leading-relaxed space-y-6">
+          <p>
+            This site hosts my thoughts on product, systems and other things I'm curious about. I mostly try to become a
+            little wiser every day.
+          </p>
+          <p>
+            I have a list of{" "}
+            <Link
+              href="/recommendations"
+              className="text-foreground underline underline-offset-4 hover:text-muted-foreground transition-colors font-medium"
+            >
+              recommendations
+            </Link>{" "}
+            — mostly books, podcasts and people I've found particularly insightful.
+          </p>
+        </div>
       </header>
 
       <section>
