@@ -2,17 +2,15 @@ import { createClient, type Entry } from "contentful"
 import type { Document } from "@contentful/rich-text-types"
 
 // Contentful client configuration with validation
-function createContentfulClient(preview = false) {
+function createContentfulClient() {
   const spaceId = process.env.CONTENTFUL_SPACE_ID
-  const accessToken = preview ? process.env.CONTENTFUL_PREVIEW_ACCESS_TOKEN : process.env.CONTENTFUL_ACCESS_TOKEN
+  const accessToken = process.env.CONTENTFUL_ACCESS_TOKEN
   const environment = process.env.CONTENTFUL_ENVIRONMENT || "master"
 
-  console.log(`🔧 Creating Contentful client (${preview ? "preview" : "delivery"}) with:`, {
+  console.log("🔧 Creating Contentful client with:", {
     spaceId: spaceId ? `${spaceId.substring(0, 8)}...` : "MISSING",
     accessToken: accessToken ? `${accessToken.substring(0, 10)}...` : "MISSING",
     environment,
-    preview,
-    host: preview ? "preview.contentful.com" : "cdn.contentful.com",
   })
 
   if (!spaceId) {
@@ -20,50 +18,40 @@ function createContentfulClient(preview = false) {
   }
 
   if (!accessToken) {
-    throw new Error(
-      `${preview ? "CONTENTFUL_PREVIEW_ACCESS_TOKEN" : "CONTENTFUL_ACCESS_TOKEN"} environment variable is required`,
-    )
+    throw new Error("CONTENTFUL_ACCESS_TOKEN environment variable is required")
   }
 
   return createClient({
     space: spaceId,
     accessToken: accessToken,
     environment: environment,
-    host: preview ? "preview.contentful.com" : undefined,
   })
 }
 
-// Initialize clients with error handling
-let deliveryClient: ReturnType<typeof createClient> | null = null
-let previewClient: ReturnType<typeof createClient> | null = null
+// Initialize client with error handling
+let client: ReturnType<typeof createClient> | null = null
 
 try {
-  deliveryClient = createContentfulClient(false)
-  console.log("✅ Contentful delivery client initialized successfully")
-
-  // Also initialize preview client if preview token is available
-  if (process.env.CONTENTFUL_PREVIEW_ACCESS_TOKEN) {
-    previewClient = createContentfulClient(true)
-    console.log("✅ Contentful preview client initialized successfully")
-  } else {
-    console.warn("⚠️ CONTENTFUL_PREVIEW_ACCESS_TOKEN not set - preview client not initialized")
-  }
+  client = createContentfulClient()
+  console.log("✅ Contentful client initialized successfully")
 } catch (error) {
   console.warn("⚠️ Contentful client initialization failed:", error instanceof Error ? error.message : "Unknown error")
-  deliveryClient = null
-  previewClient = null
+  client = null
 }
 
-// Content type ID - matches your Contentful space
+// Update the content type ID to match your Contentful space
+// Change this line:
+// To:
 const CONTENT_TYPE_ID = "mattsBlog"
 
-// Type definitions for Contentful blog post
+// Update the ContentfulBlogPostFields interface to match your Contentful model
+// The field names need to match exactly (case-sensitive)
 export interface ContentfulBlogPostFields {
   title: string // Required - matches "Title" in Contentful
   slug: string // Required - matches "Slug" in Contentful
   content: Document // Required - matches "Content" in Contentful
   excerpt?: string // Optional - matches "Excerpt" in Contentful
-  date?: string // Optional - matches "Date" in Contentful
+  date?: string // Optional - matches "Date" in Contentful (but we need to handle Date & time format)
   tags?: string // Optional - matches "Tags" in Contentful
   featured?: boolean // Optional - matches "Featured" in Contentful
 }
@@ -75,49 +63,26 @@ function isValidBlogPost(post: ContentfulBlogPost): boolean {
   const hasTitle = post.fields.title && post.fields.title.trim().length > 0
   const hasSlug = post.fields.slug && post.fields.slug.trim().length > 0
   const hasContent = post.fields.content && post.fields.content.nodeType === "document"
-  const isPublished = !!post.sys.publishedAt
 
   console.log(`📝 Validating post "${post.fields.title || "Unknown"}":`, {
     hasTitle,
     hasSlug,
     hasContent,
-    isPublished,
-    valid: hasTitle && hasSlug && hasContent && isPublished,
-    id: post.sys.id,
-    contentType: post.sys.contentType?.sys.id,
+    valid: hasTitle && hasSlug && hasContent,
+    publishedAt: post.sys.publishedAt ? "Published" : "Draft",
   })
 
-  // Only consider a post valid if it has all required fields AND is published
-  return hasTitle && hasSlug && hasContent && isPublished
-}
-
-// Get the appropriate client based on preview mode
-function getClient(preview = false) {
-  // If preview is requested but preview client isn't available, fall back to delivery client
-  if (preview && !previewClient) {
-    console.warn("⚠️ Preview client requested but not available, falling back to delivery client")
-    return deliveryClient
-  }
-
-  const client = preview ? previewClient : deliveryClient
-
-  if (!client) {
-    console.error(`❌ No Contentful client available (${preview ? "preview" : "delivery"})`)
-  }
-
-  return client
+  return hasTitle && hasSlug && hasContent
 }
 
 // Debug function to get ALL entries regardless of content type
-export async function debugGetAllEntries(preview = false) {
-  const client = getClient(preview)
-
+export async function debugGetAllEntries() {
   if (!client) {
     return { error: "Client not initialized" }
   }
 
   try {
-    console.log(`🔍 Fetching ALL entries from Contentful (${preview ? "preview" : "delivery"})...`)
+    console.log("🔍 Fetching ALL entries from Contentful...")
 
     const allEntries = await client.getEntries({
       limit: 100,
@@ -127,7 +92,6 @@ export async function debugGetAllEntries(preview = false) {
       total: allEntries.total,
       items: allEntries.items.length,
       contentTypes: [...new Set(allEntries.items.map((item) => item.sys.contentType?.sys.id).filter(Boolean))],
-      preview,
     })
 
     // Log first few entries for debugging
@@ -146,44 +110,36 @@ export async function debugGetAllEntries(preview = false) {
       total: allEntries.total,
       items: allEntries.items,
       contentTypes: [...new Set(allEntries.items.map((item) => item.sys.contentType?.sys.id).filter(Boolean))],
-      preview,
     }
   } catch (error) {
-    console.error(`❌ Error fetching all entries (${preview ? "preview" : "delivery"}):`, error)
-    return { error: error instanceof Error ? error.message : "Unknown error", preview }
+    console.error("❌ Error fetching all entries:", error)
+    return { error: error instanceof Error ? error.message : "Unknown error" }
   }
 }
 
 // Fetch all published blog posts from Contentful
-export async function getBlogPostsFromContentful(preview = false): Promise<ContentfulBlogPost[]> {
-  const client = getClient(preview)
-
+export async function getBlogPostsFromContentful(): Promise<ContentfulBlogPost[]> {
   if (!client) {
     console.warn("⚠️ Contentful client not initialized - missing environment variables")
     return []
   }
 
   try {
-    console.log(`🔍 Fetching blog posts from Contentful (${preview ? "preview" : "delivery"})...`)
+    console.log("🔍 Fetching blog posts from Contentful...")
     console.log(`📋 Using content type: ${CONTENT_TYPE_ID}`)
     console.log("🌍 Environment:", process.env.CONTENTFUL_ENVIRONMENT || "master")
 
-    // IMPORTANT: Always fetch only published content, regardless of preview mode
+    // Fetch entries with minimal filtering - only require published status
     const response = await client.getEntries<ContentfulBlogPostFields>({
       content_type: CONTENT_TYPE_ID,
       limit: 100,
-      // Always require published content
-      "sys.publishedAt[exists]": true,
-      // Order by date field if available, otherwise by creation date
-      order: ["-fields.date", "-sys.createdAt"],
     })
 
-    console.log(`📊 ${CONTENT_TYPE_ID} response (${preview ? "preview" : "delivery"}) - PUBLISHED ONLY:`, {
+    console.log(`📊 ${CONTENT_TYPE_ID} response:`, {
       total: response.total,
       items: response.items.length,
       skip: response.skip,
       limit: response.limit,
-      clientType: preview ? "preview" : "delivery",
     })
 
     // Log all entries for debugging
@@ -196,19 +152,16 @@ export async function getBlogPostsFromContentful(preview = false): Promise<Conte
         contentType: item.sys.contentType.sys.id,
         published: item.sys.publishedAt ? "Yes" : "No",
         createdAt: item.sys.createdAt,
-        updatedAt: item.sys.updatedAt,
       })
     })
 
     // Filter posts to only include those with required fields
     const validPosts = response.items.filter(isValidBlogPost)
 
-    console.log(
-      `✅ Found ${validPosts.length} valid published posts out of ${response.items.length} total entries (${preview ? "preview" : "delivery"})`,
-    )
+    console.log(`✅ Found ${validPosts.length} valid posts out of ${response.items.length} total entries`)
 
     if (validPosts.length > 0) {
-      console.log(`📝 First valid post preview (${preview ? "preview" : "delivery"}):`, {
+      console.log("📝 First valid post preview:", {
         title: validPosts[0].fields.title,
         slug: validPosts[0].fields.slug,
         hasContent: !!validPosts[0].fields.content,
@@ -218,7 +171,7 @@ export async function getBlogPostsFromContentful(preview = false): Promise<Conte
         contentType: validPosts[0].sys.contentType.sys.id,
       })
     } else if (response.items.length > 0) {
-      console.log(`❌ No valid posts found (${preview ? "preview" : "delivery"}). Issues with existing posts:`)
+      console.log("❌ No valid posts found. Issues with existing posts:")
       response.items.forEach((item, index) => {
         console.log(`Post ${index + 1} issues:`, {
           title: item.fields.title ? "✅ Has title" : "❌ Missing title",
@@ -238,7 +191,7 @@ export async function getBlogPostsFromContentful(preview = false): Promise<Conte
 
     return sortedPosts
   } catch (error) {
-    console.error(`❌ Error fetching blog posts from Contentful (${preview ? "preview" : "delivery"}):`, error)
+    console.error("❌ Error fetching blog posts from Contentful:", error)
 
     // Log specific error details for debugging
     if (error instanceof Error) {
@@ -252,46 +205,40 @@ export async function getBlogPostsFromContentful(preview = false): Promise<Conte
 }
 
 // Fetch a single blog post by slug from Contentful
-export async function getBlogPostBySlug(slug: string, preview = false): Promise<ContentfulBlogPost | null> {
-  const client = getClient(preview)
-
+export async function getBlogPostBySlug(slug: string): Promise<ContentfulBlogPost | null> {
   if (!client) {
     console.warn("⚠️ Contentful client not initialized - missing environment variables")
     return null
   }
 
   try {
-    console.log(`🔍 Fetching blog post with slug: ${slug} (${preview ? "preview" : "delivery"})`)
+    console.log(`🔍 Fetching blog post with slug: ${slug}`)
 
     const response = await client.getEntries<ContentfulBlogPostFields>({
       content_type: CONTENT_TYPE_ID,
       "fields.slug": slug,
       limit: 1,
-      // Always require published content
-      "sys.publishedAt[exists]": true,
     })
 
     const post = response.items[0] || null
 
     if (post && isValidBlogPost(post)) {
-      console.log(`✅ Found valid blog post: ${post.fields.title} (${preview ? "preview" : "delivery"})`)
+      console.log(`✅ Found valid blog post: ${post.fields.title}`)
       return post
     } else if (post) {
-      console.log(
-        `❌ Found blog post but missing required fields or not published: ${post.fields.title} (${preview ? "preview" : "delivery"})`,
-      )
+      console.log(`❌ Found blog post but missing required fields: ${post.fields.title}`)
       return null
     } else {
-      console.log(`❌ No blog post found with slug: ${slug} (${preview ? "preview" : "delivery"})`)
+      console.log(`❌ No blog post found with slug: ${slug}`)
       return null
     }
   } catch (error) {
-    console.error(`❌ Error fetching blog post with slug ${slug} (${preview ? "preview" : "delivery"}):`, error)
+    console.error(`❌ Error fetching blog post with slug ${slug}:`, error)
     return null
   }
 }
 
-// Convert Contentful blog post to our app's format with proper fallbacks
+// Update the convertContentfulPost function to handle the date format correctly
 export function convertContentfulPost(post: ContentfulBlogPost) {
   // Generate fallback excerpt from content if not provided
   const fallbackExcerpt = post.fields.excerpt || "Read more about this post..."
@@ -315,8 +262,6 @@ export function convertContentfulPost(post: ContentfulBlogPost) {
     convertedDate: postDate,
     usingFallbackExcerpt: !post.fields.excerpt,
     usingCreationDate: !post.fields.date,
-    id: post.sys.id,
-    publishedAt: post.sys.publishedAt,
   })
 
   return {
@@ -328,54 +273,47 @@ export function convertContentfulPost(post: ContentfulBlogPost) {
     published: true,
     featured: post.fields.featured || false,
     tags: post.fields.tags ? [post.fields.tags] : [],
-    contentfulId: post.sys.id, // Add Contentful ID for debugging
   }
 }
 
 // Test Contentful connection
-export async function testContentfulConnection(preview = false) {
+export async function testContentfulConnection() {
   try {
-    console.log(`🔍 Testing Contentful connection (${preview ? "preview" : "delivery"})...`)
+    console.log("🔍 Testing Contentful connection...")
 
     // Check if environment variables are set
-    const requiredToken = preview ? process.env.CONTENTFUL_PREVIEW_ACCESS_TOKEN : process.env.CONTENTFUL_ACCESS_TOKEN
-
-    if (!process.env.CONTENTFUL_SPACE_ID || !requiredToken) {
+    if (!process.env.CONTENTFUL_SPACE_ID || !process.env.CONTENTFUL_ACCESS_TOKEN) {
       return {
         success: false,
         error: "Missing environment variables",
         details: {
           hasSpaceId: !!process.env.CONTENTFUL_SPACE_ID,
-          hasAccessToken: !!requiredToken,
-          preview,
+          hasAccessToken: !!process.env.CONTENTFUL_ACCESS_TOKEN,
         },
       }
     }
 
     // Check if client was initialized
-    const client = getClient(preview)
     if (!client) {
       return {
         success: false,
         error: "Contentful client failed to initialize",
         details: "Check environment variables and try again",
-        preview,
       }
     }
 
     // Test basic API call
     const response = await client.getEntries({ limit: 1 })
 
-    // Test specific content type - ALWAYS filter for published content
+    // Test specific content type
     const blogResponse = await client.getEntries({
       content_type: CONTENT_TYPE_ID,
       limit: 5,
-      "sys.publishedAt[exists]": true,
     })
 
     // Count valid posts (those with required fields)
     const validPosts = blogResponse.items.filter((post: any) => {
-      return post.fields.title && post.fields.slug && post.fields.content && post.sys.publishedAt
+      return post.fields.title && post.fields.slug && post.fields.content
     })
 
     return {
@@ -386,7 +324,6 @@ export async function testContentfulConnection(preview = false) {
       message: "Connection successful",
       contentTypeExists: blogResponse.total >= 0,
       contentTypeId: CONTENT_TYPE_ID,
-      preview,
     }
   } catch (error) {
     return {
@@ -394,7 +331,6 @@ export async function testContentfulConnection(preview = false) {
       error: error instanceof Error ? error.message : "Unknown error",
       details: error,
       contentTypeId: CONTENT_TYPE_ID,
-      preview,
     }
   }
 }

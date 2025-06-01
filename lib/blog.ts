@@ -9,7 +9,6 @@ export interface BlogPost {
   published: boolean
   featured?: boolean
   tags?: string[]
-  contentfulId?: string // Add Contentful ID for debugging
 }
 
 // Fallback blog posts for when Contentful is unavailable
@@ -63,72 +62,29 @@ const fallbackPosts: BlogPost[] = [
   },
 ]
 
-// Determine if we're in a preview environment
-function isPreviewEnvironment(): boolean {
-  // Check for Vercel preview environment
-  const isVercelPreview = process.env.VERCEL_ENV === "preview"
-
-  // Check for local development
-  const isDevelopment = process.env.NODE_ENV === "development"
-
-  console.log("🔍 Environment check:", {
-    VERCEL_ENV: process.env.VERCEL_ENV || "not set",
-    NODE_ENV: process.env.NODE_ENV || "not set",
-    isVercelPreview,
-    isDevelopment,
-    usingPreview: isVercelPreview || isDevelopment,
-  })
-
-  // Use preview mode in Vercel preview environments and local development
-  return isVercelPreview || isDevelopment
-}
-
-// Force cache revalidation to prevent stale data
-export const revalidate = 0
-
 export async function getBlogPosts(): Promise<BlogPost[]> {
   try {
     console.log("📚 Starting to fetch blog posts...")
 
-    // Check if we're in a preview environment
-    const usePreview = isPreviewEnvironment()
-    console.log(`📚 Using ${usePreview ? "preview" : "delivery"} API`)
-
-    // ALWAYS try to fetch published content from Contentful first
-    console.log("📚 Attempting to fetch published content from Contentful...")
-    const contentfulPosts = await getBlogPostsFromContentful(usePreview)
+    // Try to fetch from Contentful first
+    const contentfulPosts = await getBlogPostsFromContentful()
 
     if (contentfulPosts.length > 0) {
-      console.log(
-        `📚 ✅ Successfully fetched ${contentfulPosts.length} PUBLISHED posts from Contentful (${usePreview ? "preview" : "delivery"})`,
-      )
+      console.log(`📚 Successfully fetched ${contentfulPosts.length} posts from Contentful`)
 
       // Convert Contentful posts to our format
       const convertedPosts = contentfulPosts.map(convertContentfulPost)
 
-      // Log the converted posts for debugging
-      console.log(
-        "📚 Converted posts:",
-        convertedPosts.map((post) => ({
-          title: post.title,
-          slug: post.slug,
-          contentfulId: post.contentfulId,
-          date: post.date,
-        })),
-      )
-
       // Sort by date (newest first)
       return convertedPosts.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     } else {
-      console.log(
-        `📚 ⚠️ No published posts found in Contentful (${usePreview ? "preview" : "delivery"}), using fallback posts`,
-      )
+      console.log("📚 No posts found in Contentful, using fallback posts")
       return fallbackPosts
         .filter((post) => post.published)
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     }
   } catch (error) {
-    console.error("📚 ❌ Error in getBlogPosts, using fallback posts:", error)
+    console.error("📚 Error in getBlogPosts, using fallback posts:", error)
 
     // Return fallback posts if Contentful fails
     return fallbackPosts
@@ -141,21 +97,14 @@ export async function getBlogPost(slug: string): Promise<BlogPost | null> {
   try {
     console.log(`📖 Fetching blog post with slug: ${slug}`)
 
-    // Check if we're in a preview environment
-    const usePreview = isPreviewEnvironment()
-    console.log(`📖 Using ${usePreview ? "preview" : "delivery"} API`)
-
-    // ALWAYS try to fetch published content from Contentful first
-    console.log("📖 Attempting to fetch published content from Contentful...")
-    const contentfulPost = await getBlogPostBySlug(slug, usePreview)
+    // Try to fetch from Contentful first
+    const contentfulPost = await getBlogPostBySlug(slug)
 
     if (contentfulPost) {
-      console.log(
-        `📖 ✅ Found PUBLISHED post in Contentful (${usePreview ? "preview" : "delivery"}): ${contentfulPost.fields.title}`,
-      )
+      console.log(`📖 Found post in Contentful: ${contentfulPost.fields.title}`)
       return convertContentfulPost(contentfulPost)
     } else {
-      console.log(`📖 ⚠️ Post not found in Contentful (${usePreview ? "preview" : "delivery"}), checking fallback posts`)
+      console.log(`📖 Post not found in Contentful, checking fallback posts`)
 
       // Fallback to local posts
       const fallbackPost = fallbackPosts.find((post) => post.slug === slug && post.published)
@@ -169,7 +118,7 @@ export async function getBlogPost(slug: string): Promise<BlogPost | null> {
       return fallbackPost || null
     }
   } catch (error) {
-    console.error(`📖 ❌ Error fetching blog post ${slug}, checking fallback:`, error)
+    console.error(`📖 Error fetching blog post ${slug}, checking fallback:`, error)
 
     // Fallback to local posts
     return fallbackPosts.find((post) => post.slug === slug && post.published) || null
